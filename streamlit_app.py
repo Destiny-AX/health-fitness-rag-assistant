@@ -72,22 +72,27 @@ st.sidebar.title("⚙️ 设置")
 st.sidebar.subheader("🧠 模型选择")
 model_choice = st.sidebar.radio(
     "选择推理模型",
-    options=["kimi", "local"],
-    format_func=lambda x: "Kimi API (在线)" if x == "kimi" else "本地模型 (离线)",
+    options=["kimi", "local", "finetuned"],
+    format_func=lambda x: {
+        "kimi": "Kimi API (在线)",
+        "local": "Qwen2.5-7B 通用模型 (本地)",
+        "finetuned": "⭐ 健康健身微调模型 (本地)"
+    }[x],
     index=0,
     key="model_radio"
 )
 if model_choice != st.session_state.model_choice:
     st.session_state.model_choice = model_choice
-    st.session_state.llm = None  # 模型切换时重置LLM
+    st.session_state.llm = None
 
-if model_choice == "local":
+if model_choice in ("local", "finetuned"):
+    default_path = "models/qwen2.5-7b-instruct-q4_k_m.gguf" if model_choice == "local" else "models/health-fitness-7b-q4_k_m.gguf"
     local_model_path = st.sidebar.text_input(
         "本地模型路径",
-        value="models/qwen2.5-7b-instruct-q4_k_m.gguf",
+        value=default_path,
         help="GGUF 格式模型文件路径"
     )
-    st.sidebar.caption("⚠️ 本地模型需要 4GB+ 显存/内存")
+    st.sidebar.caption("⚠️ 需要 4GB+ 内存 | 首次运行需下载模型")
 
 # 检索选项
 st.sidebar.subheader("🔍 检索设置")
@@ -103,9 +108,43 @@ st.sidebar.info(
     f"基于 RAG 技术的健康管理和健身教练智能问答系统\n\n"
     f"当前模型：{info['name']}\n"
     f"模型详情：{info['model']}\n"
-    f"上下文：{info['context']}\n\n"
+    f"上下文：{info['context']}\n"
+    f"训练方式：{info['training']}\n\n"
     f"RAG 方式：BM25 + {'CrossEncoder重排' if enable_rerank else '关键词检索'}"
 )
+
+# 微调数据展示
+if model_choice == "finetuned":
+    from llm_factory import get_training_summary
+    train_sum = get_training_summary()
+    if train_sum["ready"]:
+        with st.sidebar.expander("📊 微调数据集详情", expanded=True):
+            st.markdown(f"""
+**数据集规模**
+- 训练集: {train_sum['train_samples']} 条
+- 验证集: {train_sum['val_samples']} 条
+- 总计: {train_sum['total_samples']} 条
+
+**基座模型**: Qwen2.5-7B-Instruct
+**微调方法**: QLoRA (r=16, alpha=32)
+**训练轮数**: 3 epochs
+**学习率**: 2e-4
+
+**数据来源**
+- {len(train_sum['categories'])} 个知识分类
+- {len(train_sum['sources'])} 个权威来源
+""")
+    else:
+        with st.sidebar.expander("📊 微调说明"):
+            st.markdown("""
+**微调流程**:
+1. 运行 `scripts/build_finetune_data.py` 构建数据集
+2. 运行 `scripts/finetune_lora.py` 进行 LoRA 微调
+3. 导出 GGUF 格式模型到 `models/` 目录
+4. 选择"微调模型"模式即可使用
+
+**推荐**: Google Colab (免费 T4 GPU)
+""")
 
 # 知识库信息
 st.sidebar.subheader("📚 权威知识库")
